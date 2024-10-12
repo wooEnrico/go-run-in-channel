@@ -34,7 +34,7 @@ func main() {
 	}
 
 	// 等待所有任务完成
-	goRun.WaitGroup.Wait()
+	goRun.Wait()
 }
 
 // 自定义任务参数

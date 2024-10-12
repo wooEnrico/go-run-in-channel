@@ -25,7 +25,7 @@ func TestGoRunChannel(t *testing.T) {
 		goRunChannel.Run(runable, param)
 	}
 	// 等待所有任务完成
-	goRunChannel.WaitGroup.Wait()
+	goRunChannel.Wait()
 }
 
 type Test struct {

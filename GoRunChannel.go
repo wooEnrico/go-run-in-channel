@@ -5,29 +5,32 @@ import (
 )
 
 type GoRunChannel struct {
-	Channel   chan bool
-	WaitGroup *sync.WaitGroup
+	channel   chan struct{}
+	waitGroup sync.WaitGroup
 }
 
+// NewGoRunChannel creates a new GoRunChannel with the parallel parameter
 func NewGoRunChannel(parallel int) *GoRunChannel {
 	return &GoRunChannel{
-		Channel:   make(chan bool, parallel),
-		WaitGroup: &sync.WaitGroup{},
+		channel: make(chan struct{}, parallel),
 	}
 }
 
-func (GoRunChannel *GoRunChannel) Run(runable func(param interface{}), param interface{}) {
-	// 添加任务
-	GoRunChannel.WaitGroup.Add(1)
-	// 获取信号量
-	GoRunChannel.Channel <- true
-	// 执行任务
-	go running(GoRunChannel, runable, param)
+// Wait waits for all the goroutines to finish
+func (GoRunChannel *GoRunChannel) Wait() {
+	GoRunChannel.waitGroup.Wait()
 }
 
-func running(GoRunChannel *GoRunChannel, runable func(param interface{}), param interface{}) {
-	defer GoRunChannel.WaitGroup.Done()
-	runable(param)
-	// 释放信号量
-	<-GoRunChannel.Channel
+// Run runs the runnable function with the param parameter
+func (GoRunChannel *GoRunChannel) Run(runnable func(param interface{}), param interface{}) {
+	GoRunChannel.waitGroup.Add(1)
+	GoRunChannel.channel <- struct{}{}
+	go running(GoRunChannel, runnable, param)
+}
+
+// running is a goroutine that runs the runnable function
+func running(GoRunChannel *GoRunChannel, runnable func(param interface{}), param interface{}) {
+	defer GoRunChannel.waitGroup.Done()
+	runnable(param)
+	<-GoRunChannel.channel
 }
