@@ -13,14 +13,13 @@ import (
 )
 
 func main() {
-
-	// 创建并发度为4的协程池
-	goRun := goRunInChannel.NewGoRunChannel(4)
+	// 创建并发度为4的（任意参数）协程池
+	goRun := goRunInChannel.NewGoRunChannel[any](4)
 	// 任务函数
-	Runable := func(Interface interface{}) {
-		log.Printf("Worker %d started\n", Interface.(Test).id)
+	Runable := func(param any) {
+		log.Printf("Worker %d started\n", param.(Test).id)
 		time.Sleep(time.Second)
-		log.Printf("Worker %d done\n", Interface.(Test).id)
+		log.Printf("Worker %d done\n", param.(Test).id)
 	}
 
 	// 循环10个任务
