@@ -2,6 +2,8 @@ package goRunInChannel
 
 import (
 	"log"
+	"runtime/debug"
+	"strings"
 	"sync"
 )
 
@@ -18,16 +20,50 @@ func (f PanicHandlerFunc) Handle(recovered any, param any) {
 	f(recovered, param)
 }
 
+// defaultPanicHandler is the default panic handler that logs the panic and the parameter.
+var defaultPanicHandler PanicHandler = PanicHandlerFunc(func(recovered any, param any) {
+	// 格式化堆栈信息
+	stackTrace := string(debug.Stack())
+	// 添加缩进和分隔线
+	formattedStack := strings.ReplaceAll(stackTrace, "\n", "\n    ")
+
+	log.Printf("========== PANIC RECOVERED ==========\n"+
+		"ERROR: %v\n"+
+		"PARAM: %v\n"+
+		"STACK TRACE:\n    %s\n"+
+		"======================================",
+		recovered, param, formattedStack)
+})
+
 // GoRunChannel manages concurrent execution of tasks with a limit on parallelism.
 type GoRunChannel[T any] struct {
-	channel   chan struct{}
-	waitGroup sync.WaitGroup
+	channel      chan struct{}
+	waitGroup    sync.WaitGroup
+	panicHandler PanicHandler
 }
 
 // NewGoRunChannel creates a new GoRunChannel with a specified parallelism limit.
 func NewGoRunChannel[T any](parallel int) *GoRunChannel[T] {
+	if parallel <= 0 {
+		parallel = 1
+	}
 	return &GoRunChannel[T]{
-		channel: make(chan struct{}, parallel),
+		channel:      make(chan struct{}, parallel),
+		panicHandler: defaultPanicHandler,
+	}
+}
+
+// NewGoRunChannelWithPanicHandler creates a new GoRunChannel with a specified parallelism limit and panic handler.
+func NewGoRunChannelWithPanicHandler[T any](parallel int, panicHandler PanicHandler) *GoRunChannel[T] {
+	if parallel <= 0 {
+		parallel = 1
+	}
+	if panicHandler == nil {
+		panicHandler = defaultPanicHandler
+	}
+	return &GoRunChannel[T]{
+		channel:      make(chan struct{}, parallel),
+		panicHandler: panicHandler,
 	}
 }
 
@@ -38,13 +74,15 @@ func (g *GoRunChannel[T]) Wait() {
 
 // Run runs the provided runnable function with the given parameter.
 func (g *GoRunChannel[T]) Run(runnable func(param T), param T) {
-	g.RunWithRecover(runnable, param, PanicHandlerFunc(func(recovered any, param any) {
-		log.Printf("Panic recovered: %v Param: %v\n", recovered, param)
-	}))
+	g.RunWithRecover(runnable, param, g.panicHandler)
 }
 
 // RunWithRecover runs the provided runnable function with panic recovery.
 func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handler PanicHandler) {
+	if runnable == nil {
+		return
+	}
+
 	g.waitGroup.Add(1)
 	g.channel <- struct{}{} // Acquire a slot
 
@@ -56,7 +94,7 @@ func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handle
 
 		// Recover from panic to ensure Done is called
 		defer func() {
-			if r := recover(); r != nil {
+			if r := recover(); r != nil && handler != nil {
 				handler.Handle(r, param) // Call the panic handler
 			}
 		}()
