@@ -1,6 +1,7 @@
 package goRunInChannel
 
 import (
+	"errors"
 	"log"
 	"runtime/debug"
 	"strings"
@@ -40,6 +41,8 @@ type GoRunChannel[T any] struct {
 	channel      chan struct{}
 	waitGroup    sync.WaitGroup
 	panicHandler PanicHandler
+	closeOnce    sync.Once
+	closed       bool
 }
 
 // NewGoRunChannel creates a new GoRunChannel with a specified parallelism limit.
@@ -50,6 +53,7 @@ func NewGoRunChannel[T any](parallel int) *GoRunChannel[T] {
 	return &GoRunChannel[T]{
 		channel:      make(chan struct{}, parallel),
 		panicHandler: defaultPanicHandler,
+		closed:       false,
 	}
 }
 
@@ -64,23 +68,31 @@ func NewGoRunChannelWithPanicHandler[T any](parallel int, panicHandler PanicHand
 	return &GoRunChannel[T]{
 		channel:      make(chan struct{}, parallel),
 		panicHandler: panicHandler,
+		closed:       false,
 	}
 }
 
-// Wait waits for all the goroutines to finish.
-func (g *GoRunChannel[T]) Wait() {
+// WaitAndClose waits for all the goroutines to finish and close.
+func (g *GoRunChannel[T]) WaitAndClose() {
 	g.waitGroup.Wait()
+	g.closeOnce.Do(func() {
+		g.closed = true
+		close(g.channel)
+	})
 }
 
 // Run runs the provided runnable function with the given parameter.
-func (g *GoRunChannel[T]) Run(runnable func(param T), param T) {
-	g.RunWithRecover(runnable, param, g.panicHandler)
+func (g *GoRunChannel[T]) Run(runnable func(param T), param T) error {
+	return g.RunWithRecover(runnable, param, g.panicHandler)
 }
 
 // RunWithRecover runs the provided runnable function with panic recovery.
-func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handler PanicHandler) {
+func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handler PanicHandler) error {
 	if runnable == nil {
-		return
+		return errors.New("runnable function is nil")
+	}
+	if g.closed {
+		return errors.New("channel is closed")
 	}
 
 	g.waitGroup.Add(1)
@@ -101,4 +113,6 @@ func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handle
 
 		runnable(param)
 	}()
+
+	return nil
 }

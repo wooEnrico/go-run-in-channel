@@ -18,17 +18,20 @@ func TestGoRunChannelInt(t *testing.T) {
 	// 循环10个任务
 	for i := 0; i < 10; i++ {
 		// 执行任务
-		goRunChannel.Run(runable, i)
+		err := goRunChannel.Run(runable, i)
+		if err != nil {
+			t.Errorf("run error: %v", err)
+		}
 	}
 	// 等待所有任务完成
-	goRunChannel.Wait()
+	goRunChannel.WaitAndClose()
 }
 
 func TestGoRunChannelAny(t *testing.T) {
 	// 创建并发度为4的协程池
 	goRun := NewGoRunChannel[any](4)
 	// 任务函数
-	Runable := func(param any) {
+	runable := func(param any) {
 		log.Printf("Worker %d started\n", param.(Test).id)
 		time.Sleep(time.Second)
 		log.Printf("Worker %d done\n", param.(Test).id)
@@ -41,11 +44,14 @@ func TestGoRunChannelAny(t *testing.T) {
 			id: i,
 		}
 		// 执行任务
-		goRun.Run(Runable, param)
+		err := goRun.Run(runable, param)
+		if err != nil {
+			t.Errorf("run error: %v", err)
+		}
 	}
 
 	// 等待所有任务完成
-	goRun.Wait()
+	goRun.WaitAndClose()
 }
 
 type Test struct {
