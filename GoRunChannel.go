@@ -42,6 +42,7 @@ type GoRunChannel[T any] struct {
 	waitGroup    sync.WaitGroup
 	panicHandler PanicHandler
 	closeOnce    sync.Once
+	mu           sync.Mutex
 	closed       bool
 }
 
@@ -74,9 +75,12 @@ func NewGoRunChannelWithPanicHandler[T any](parallel int, panicHandler PanicHand
 
 // WaitAndClose waits for all the goroutines to finish and close.
 func (g *GoRunChannel[T]) WaitAndClose() {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+
 	g.waitGroup.Wait()
 	g.closeOnce.Do(func() {
-		g.closed = true
 		close(g.channel)
 	})
 }
@@ -91,11 +95,15 @@ func (g *GoRunChannel[T]) RunWithRecover(runnable func(param T), param T, handle
 	if runnable == nil {
 		return errors.New("runnable function is nil")
 	}
+
+	g.mu.Lock()
 	if g.closed {
+		g.mu.Unlock()
 		return errors.New("channel is closed")
 	}
-
 	g.waitGroup.Add(1)
+	g.mu.Unlock()
+
 	g.channel <- struct{}{} // Acquire a slot
 
 	go func() {

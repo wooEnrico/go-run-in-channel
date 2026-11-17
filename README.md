@@ -33,7 +33,7 @@ func main() {
 	}
 
 	// 等待所有任务完成
-	goRun.Wait()
+	goRun.WaitAndClose()
 }
 
 // 自定义任务参数
